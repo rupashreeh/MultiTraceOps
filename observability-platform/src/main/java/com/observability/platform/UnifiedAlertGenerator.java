@@ -1,9 +1,12 @@
 package com.observability.platform;
 
+import com.observability.platform.config.InputProperties;
 import com.twilio.Twilio;
 import org.json.JSONObject;
 
+import java.io.IOError;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -21,6 +24,18 @@ import javax.mail.Message;
 
 public class UnifiedAlertGenerator {
     static String data = "";
+
+    private static Properties getProperties(){
+             Properties properties = new Properties();
+            final ClassLoader loader = UnifiedAlertGenerator.class.getClassLoader();
+                try(InputStream config = loader.getResourceAsStream("input.properties")){
+                     properties.load(config);
+                     System.out.println("Properties             "+properties.toString());
+                    } catch(IOException e){
+                        throw new IOError(e);
+                    }
+                return properties;
+            }
 
     public static void sendMail(String recipientEmail, String data, String emailSubject){
         // Recipient's email ID needs to be mentioned.
@@ -92,21 +107,154 @@ public class UnifiedAlertGenerator {
         System.out.println(smsmessage.getSid());
 
     }
-   public static void main(String[] args) {
-       // Add recipient email and phone number as input parameters
-       if (args.length != 2) {
-           System.out.println("Usage: UnifiedAlertGenerator <recipient_email> <recipient_phone_number>");
-           return;
-       }
-       String recipientEmail = args[0];
-       String recipientNumber = args[1];
-        List<String> traceIds = new LinkedList<>();
+
+    public static void checkAppMetricAlerts(){
+        Properties properties = getProperties();
+        boolean sendSms = (boolean) properties.get("sendSms");
+        boolean sendEmail = (boolean) properties.get("sendEmail");
+        boolean sendFileSystem = (boolean) properties.get("sendFileSystem");
+        String recipientEmail  = (String) properties.get("recipientEmail");
+        String recipientNumber = (String) properties.get("recipientPhoneNumber");
+        Integer cpuLoad = (Integer) properties.get("cpuLoad");
+        Integer memoryUsage = (Integer) properties.get("memoryUsage");
+        List<String> cpuIds = new LinkedList<>();
+        List<String> memIds = new LinkedList<>();
         Map<String, ArrayList<String>> traceMap = new HashMap<>();
         try {
             Class.forName("com.mysql.cj.jdbc.Driver").newInstance();
             Connection con = DriverManager.getConnection("jdbc:mysql://localhost/test", "root", "password");
             Statement st = con.createStatement();
-            String sql = "select * from logDB";
+            long time = System.currentTimeMillis() - 300000;
+            String sql = "select * from appMetricsDB where ts >= " + time;
+            PreparedStatement preparedStmt = con.prepareStatement(sql);
+            ResultSet rs = st.executeQuery(sql);
+            while (rs.next()) {
+                long id = rs.getLong("ts");
+                String str1 = rs.getString("appMetricsData");
+                JSONObject obj = new JSONObject(str1);
+                String rid = obj.get("rid").toString();
+                if(traceMap.containsKey(rid)){
+                    ArrayList<String> list = traceMap.get(rid);
+                    list.add(str1);
+                    traceMap.put(rid, list);
+                }   else{
+                    ArrayList<String> list = new ArrayList<>();
+                    list.add(str1);
+                    traceMap.put(rid, list);
+                }
+
+                if (Double.parseDouble((String) obj.get("cpuLoad")) >= cpuLoad)
+                    cpuIds.add(rid);
+                if (Long.parseLong((String) obj.get("usedHeapMemory")) >= memoryUsage)
+                    memIds.add(rid);
+            }
+            Path filePath = Paths.get(System.getProperty("user.home")+"/appMetricsCpu.txt");
+            for(String cpuId : cpuIds){
+               String subject = "CPU Load exceeded threshold for Request Id: "+cpuId;
+               List<String> data =   traceMap.get(cpuId);
+               StringBuffer message = new StringBuffer();
+               for(String d: data){
+                   message.append(d).append(System.getProperty("line.separator"));
+               }
+                if(sendFileSystem)
+                    Files.writeString(filePath, subject+ message.toString(), StandardOpenOption.CREATE);
+                if(sendEmail)
+                    sendMail(recipientEmail, message.toString(), subject);
+                if(sendSms)
+                    sendSMS(recipientNumber,  message.toString(), subject);
+            }
+            filePath = Paths.get(System.getProperty("user.home")+"/appMetricsMemory.txt");
+            for(String memId : memIds){
+                String subject = "Memory Usage exceeded threshold for Request Id: "+memId;
+                List<String> data =   traceMap.get(memId);
+                StringBuffer message = new StringBuffer();
+                for(String d: data){
+                    message.append(d).append(System.getProperty("line.separator"));
+                }
+                if(sendFileSystem)
+                    Files.writeString(filePath, subject+ message.toString(), StandardOpenOption.CREATE);
+                if(sendEmail)
+                    sendMail(recipientEmail, message.toString(), subject);
+                if(sendSms)
+                    sendSMS(recipientNumber,  message.toString(), subject);
+            }
+        }catch(Exception e)  {
+
+        }
+    }
+
+    public static void checkDBMetricAlerts(){
+        Properties properties = getProperties();
+        boolean sendSms = (boolean) properties.get("sendSms");
+        boolean sendEmail = (boolean) properties.get("sendEmail");
+        boolean sendFileSystem = (boolean) properties.get("sendFileSystem");
+        String recipientEmail  = (String) properties.get("recipientEmail");
+        String recipientNumber = (String) properties.get("recipientPhoneNumber");
+        Long queryExecutionTime = (Long) properties.get("queryExecutionTime");
+        List<String> slowQuery = new LinkedList<>();
+        Map<String, ArrayList<String>> traceMap = new HashMap<>();
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver").newInstance();
+            Connection con = DriverManager.getConnection("jdbc:mysql://localhost/test", "root", "password");
+            Statement st = con.createStatement();
+            long time = System.currentTimeMillis() - 300000;
+            String sql = "select * from dbMetricsDB where ts >= " + time;
+            PreparedStatement preparedStmt = con.prepareStatement(sql);
+            ResultSet rs = st.executeQuery(sql);
+            while (rs.next()) {
+                long id = rs.getLong("ts");
+                String str1 = rs.getString("dbMetricsData");
+                JSONObject obj = new JSONObject(str1);
+                String rid = obj.get("rid").toString();
+                if (traceMap.containsKey(rid)) {
+                    ArrayList<String> list = traceMap.get(rid);
+                    list.add(str1);
+                    traceMap.put(rid, list);
+                } else {
+                    ArrayList<String> list = new ArrayList<>();
+                    list.add(str1);
+                    traceMap.put(rid, list);
+                }
+
+                if (Double.parseDouble((String) obj.get("queryExecutionTime")) >= queryExecutionTime)
+                    slowQuery.add(rid);
+            }
+            Path filePath = Paths.get(System.getProperty("user.home")+"/slowQuery.txt");
+            for(String slow : slowQuery){
+                String subject = "Slow Query In Database for Request Id: "+ slow;
+                List<String> data =   traceMap.get(slowQuery);
+                StringBuffer message = new StringBuffer();
+                for(String d: data){
+                    message.append(d).append(System.getProperty("line.separator"));
+                }
+                if(sendFileSystem)
+                    Files.writeString(filePath, subject+ message.toString(), StandardOpenOption.CREATE);
+                if(sendEmail)
+                    sendMail(recipientEmail, message.toString(), subject);
+                if(sendSms)
+                    sendSMS(recipientNumber,  message.toString(), subject);
+            }
+
+        }catch(Exception e){
+
+        }
+    }
+
+   public static void checkLogAlerts(){
+       Properties properties = getProperties();
+       boolean sendSms = (boolean) properties.get("sendSms");
+       boolean sendEmail = (boolean) properties.get("sendEmail");
+       boolean sendFileSystem = (boolean) properties.get("sendFileSystem");
+       String recipientEmail  = (String) properties.get("recipientEmail");
+       String recipientNumber = (String) properties.get("recipientPhoneNumber");
+       List<String> traceIds = new LinkedList<>();
+       Map<String, ArrayList<String>> traceMap = new HashMap<>();
+       try {
+            Class.forName("com.mysql.cj.jdbc.Driver").newInstance();
+            Connection con = DriverManager.getConnection("jdbc:mysql://localhost/test", "root", "password");
+            Statement st = con.createStatement();
+            long time = System.currentTimeMillis() - 300000;
+            String sql = "select * from logDB where ts >= "+time;
             PreparedStatement preparedStmt = con.prepareStatement(sql);
             ResultSet rs = st.executeQuery(sql);
             while (rs.next()) {
@@ -135,8 +283,8 @@ public class UnifiedAlertGenerator {
             for(String rID : traceIds){
                List<String> alertList =  traceMap.get(rID);
                String subject = "Load balancer timeout due to rid: "+ rID + " in layer: ";
-                StringBuffer message = new StringBuffer();
-                Path filePath = Paths.get(System.getProperty("user.home")+"/"+rID+".txt");
+               StringBuffer message = new StringBuffer();
+               Path filePath = Paths.get(System.getProperty("user.home")+"/"+rID+".txt");
                for(String alert : alertList){
                    JSONObject obj = new JSONObject(alert);
                    message.append(obj.toString()).append(System.getProperty("line.separator"));
@@ -149,16 +297,22 @@ public class UnifiedAlertGenerator {
                }
                 if(serviceSlow){
                     subject+=" Service SlowDown ";
-                    Files.writeString(filePath, "Service slowDown due to rid :"+rID+" "+ message.toString(), StandardOpenOption.CREATE);
-                    sendMail(recipientEmail, message.toString(), subject);
-                    sendSMS(recipientNumber,  message.toString(), subject);
+                    if(sendFileSystem)
+                        Files.writeString(filePath, "Service slowDown due to rid :"+rID+" "+ message.toString(), StandardOpenOption.CREATE);
+                    if(sendEmail)
+                       sendMail(recipientEmail, message.toString(), subject);
+                    if(sendSms)
+                       sendSMS(recipientNumber,  message.toString(), subject);
                     serviceSlow = false;
 
                 }   else{
                     subject+=" Database SlowDown ";
-                    Files.writeString(filePath, "Database slowDown rid :"+rID+" "+ message.toString(), StandardOpenOption.CREATE);
-                    sendMail(recipientEmail, message.toString(), subject);
-                    sendSMS(recipientNumber,  message.toString(), subject);
+                    if(sendFileSystem)
+                        Files.writeString(filePath, "Database slowDown rid :"+rID+" "+ message.toString(), StandardOpenOption.CREATE);
+                    if(sendEmail)
+                        sendMail(recipientEmail, message.toString(), subject);
+                    if(sendSms)
+                        sendSMS(recipientNumber,  message.toString(), subject);
                     dbSlow = false;
                 }
             }

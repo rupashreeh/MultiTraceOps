@@ -11,11 +11,12 @@ public class PlatformApplication {
 		SpringApplication.run(PlatformApplication.class, args);
 	}
 
-	@Scheduled(fixedRate = 300000) // 300000 milliseconds = 5 minutes
+	@Scheduled(fixedRate = 60000) // 300000 milliseconds = 5 minutes
 	public void callUnifiedAlertsGenerator() {
-		// Call the UnifiedAlertsGenerator here
-		// For example, if the UnifiedAlertsGenerator is a static method:
-		UnifiedAlertGenerator.main(new String[] { "recipient@example.com", "+1234567890" });
+		UnifiedAlertGenerator.checkLogAlerts();
+		UnifiedAlertGenerator.checkAppMetricAlerts();
+		UnifiedAlertGenerator.checkDBMetricAlerts();
+
 	}
 
 }

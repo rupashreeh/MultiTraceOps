@@ -76,7 +76,7 @@ public class KafkaConsumerLog {
 
             try (Connection con = DriverManager.getConnection(jdbcUrl, username, password)) {
                 long tsN = System.currentTimeMillis();
-                String sql = "INSERT INTO appmetrics(ts, logData) VALUES (?, ?)";
+                String sql = "INSERT INTO appmetrics(ts, appMetricsData) VALUES (?, ?)";
                 PreparedStatement preparedStatement = con.prepareStatement(sql);
                 preparedStatement.setLong(1, tsN);
                 preparedStatement.setString(2, message);
@@ -102,7 +102,7 @@ public class KafkaConsumerLog {
 
             try (Connection con = DriverManager.getConnection(jdbcUrl, username, password)) {
                 long tsN = System.currentTimeMillis();
-                String sql = "INSERT INTO dbmetrics(ts, logData) VALUES (?, ?)";
+                String sql = "INSERT INTO dbmetrics(ts, dbMetricsData) VALUES (?, ?)";
                 PreparedStatement preparedStatement = con.prepareStatement(sql);
                 preparedStatement.setLong(1, tsN);
                 preparedStatement.setString(2, message);
