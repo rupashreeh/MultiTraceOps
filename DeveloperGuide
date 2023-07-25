@@ -1,0 +1,75 @@
+# Setup Instructions
+To set up the development environment for the Exemplar Service, follow these steps:
+
+#Ensure you have Java 17 installed on your system. You can check the Java version by running the following command in the terminal:
+
+java -version
+If Java 17 is not installed, download and install it from the official website or package manager for your operating system.
+
+# Verify that you have Maven 3.8.6 installed on your system by running the following command in the terminal:
+
+mvn --version
+If Maven 3.8.6 is not installed, download and install it from the official Maven website.
+
+# Install MySQL on your system. If it's not already installed, you can do so by running the following command in the terminal:
+
+sql
+
+sudo apt-get update
+sudo apt-get install -y mysql-server
+
+#Download and install Zookeeper and Kafka. If you are using Ubuntu, follow these steps:
+
+Run sudo apt install zookeeper to install Zookeeper.
+
+Download Kafka from the Apache Kafka website using the following command:
+wget https://downloads.apache.org/kafka/3.3.1/kafka_2.12-3.3.1.tgz
+
+Extract Kafka and move it to the installation directory:
+tar xzf kafka_2.12-3.3.1.tgz
+sudo mv kafka_2.12-3.3.1 /usr/local/kafka
+
+Move the zookeeper.service and kafka.service files to the /etc/systemd/system/ directory.
+
+Run the following commands to start Zookeeper and Kafka services:
+
+sudo systemctl daemon-reload
+sudo systemctl start zookeeper
+sudo systemctl start kafka
+
+Verify the status of Zookeeper and Kafka services:
+
+sudo systemctl status zookeeper
+sudo systemctl status kafka
+
+Proceed to running the Exemplar Service, Workload, and Platform as described in the documentation.
+
+Running the Exemplar Service
+Unzip the foodservice.zip file.
+
+Change to the foodservice/wallet directory.
+
+Run Maven to build the project:
+
+mvn clean install
+Start the Exemplar Service using Maven Wrapper:
+./mvnw
+
+Running the Workload
+Unzip the platform.zip file.
+
+Change to the samplescripts directory.
+
+Run the Gatling workload script:
+
+./workload-gatling.sh
+
+Running the Platform
+Change to the root directory of the unzipped platform.
+
+Build the platform using Maven:
+mvn clean install
+
+Start the Unified Alerts Generator:
+
+java UnifiedAlertsGenerator
